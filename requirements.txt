@@ -4,7 +4,7 @@ comm==0.2.3
 debugpy==1.8.18
 decorator==5.2.1
 executing==2.2.1
-ipykernel==7.1.0
+ipykernel
 ipython==8.16.1
 ipython_pygments_lexers==1.1.1
 jedi==0.19.2
@@ -14,7 +14,7 @@ matplotlib-inline==0.2.1
 nest-asyncio==1.6.0
 numpy
 packaging==25.0
-pandas==2.3.3
+pandas==2.2.2
 parso==0.8.5
 platformdirs==4.5.1
 prompt_toolkit==3.0.52
