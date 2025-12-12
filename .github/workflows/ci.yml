@@ -8,7 +8,12 @@ on:
 
 jobs:
     test:
-        runs-on: ubuntu-latest
+        # Use Ubuntu 22.04 to retain compatibility with older runtimes
+        # (for example, some workflows or actions that attempt to install
+        # out-of-support runtimes like .NET Core 3.1 may fail on Ubuntu 24.04).
+        # If you prefer the latest runner, change back to `ubuntu-latest`
+        # and update runtime versions in workflow steps accordingly.
+        runs-on: ubuntu-22.04
         strategy:
             matrix:
                 python-version: [3.10, 3.11]
