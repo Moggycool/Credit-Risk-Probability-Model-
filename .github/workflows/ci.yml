@@ -1,0 +1,56 @@
+name: CI
+
+on:
+    push:
+        branches: [main, develop]
+    pull_request:
+        branches: [main, develop]
+
+jobs:
+    test:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                python-version: [3.10, 3.11]
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v4
+              with:
+                  python-version: ${{ matrix.python-version }}
+
+            - name: Cache pip
+              uses: actions/cache@v4
+              with:
+                  path: ~/.cache/pip
+                  key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+                  restore-keys: |
+                      ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+            - name: Install dependencies
+              run: |
+                  set -e
+                  if [ -f "requirements.txt" ]; then
+                      pip install -r requirements.txt
+                  elif [ -f "pyproject.toml" ]; then
+                      # if the project uses pyproject.toml (PEP 517), try installing the package
+                      pip install .
+                  else
+                      # minimal fallback for running tests
+                      pip install pytest flake8
+                  fi
+
+            - name: Lint (optional)
+              run: |
+                  if command -v flake8 >/dev/null 2>&1; then
+                      flake8 || true
+                  else
+                      echo "flake8 not installed, skipping lint"
+                  fi
+
+            - name: Run tests
+              run: |
+                  pytest -q
