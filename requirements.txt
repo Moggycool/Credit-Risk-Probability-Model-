@@ -12,7 +12,7 @@ jupyter_client==8.7.0
 jupyter_core==5.9.1
 matplotlib-inline==0.2.1
 nest-asyncio==1.6.0
-numpy==2.3.5
+numpy
 packaging==25.0
 pandas==2.3.3
 parso==0.8.5
