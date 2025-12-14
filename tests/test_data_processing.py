@@ -5,17 +5,20 @@ from sklearn.dummy import DummyClassifier
 
 
 def synthetic_df(n_customers=100, seed=0):
-    rng = np.random.RandomState(seed)
+    # Use the new Generator API (default_rng) to avoid deprecation/type-checker warnings
+    rng = np.random.default_rng(seed)
     ids = [f"C{i}" for i in range(n_customers)]
     rows = []
     for cid in ids:
-        n_tx = rng.randint(1, 5)
+        # Generator.integers is the equivalent of RandomState.randint
+        n_tx = rng.integers(1, 5)
         for _ in range(n_tx):
             rows.append({
                 "CustomerId": cid,
                 "Amount": float(rng.exponential(scale=100.0)),
                 "TransactionStartTime": "2025-01-01",
-                "is_high_risk": int(rng.rand() < 0.2)
+                # use Generator.random() instead of RandomState.rand()
+                "is_high_risk": int(rng.random() < 0.2)
             })
     df = pd.DataFrame(rows)
     # build a simple customer-level features table (simulate pipeline output)
