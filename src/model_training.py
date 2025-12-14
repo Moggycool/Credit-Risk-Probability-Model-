@@ -21,6 +21,7 @@ try:
     import mlflow
     import mlflow.sklearn
     MLFLOW_AVAILABLE = True
+
 except Exception:
     MLFLOW_AVAILABLE = False
 
