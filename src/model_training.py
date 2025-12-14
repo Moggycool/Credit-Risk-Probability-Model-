@@ -9,6 +9,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split, GridSearchCV, RandomizedSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 )
@@ -142,7 +143,13 @@ def make_pipeline_with_scaler(clf):
     Build a standard Pipeline with a StandardScaler followed by the classifier.
     Useful for classifiers that need scaling (e.g., logistic).
     """
-    return Pipeline([("scaler", StandardScaler()), ("clf", clf)])
+    # Add an imputer step up front to handle missing values (NaNs) which
+    # many sklearn estimators (e.g., LogisticRegression) do not accept.
+    return Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+        ("clf", clf)
+    ])
 
 
 def log_experiment_mlflow(
