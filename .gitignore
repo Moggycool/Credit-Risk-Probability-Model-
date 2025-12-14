@@ -13,3 +13,7 @@ __pycache__/
 
 
 *.ipynb_checkpoints/
+
+# Ignore local MLflow SQLite DB files (should not be checked into Git)
+mlflow.db
+**/mlflow.db
