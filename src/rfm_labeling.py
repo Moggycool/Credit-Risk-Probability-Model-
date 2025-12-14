@@ -1,8 +1,13 @@
 """
-RFM proxy target variable engineering: calculates RFM features per customer,
-segments with KMeans, and labels high-risk segment for credit risk proxy.
-"""
+RFMLabeler: compute Recency-Frequency-Monetary (RFM) and produce KMeans cluster labels.
 
+Public class:
+- RFMLabeler.fit(raw_df)                 # computes RFM and fits scaler+KMeans
+- RFMLabeler.transform(customers_df)     # returns customers_df with cluster label
+- RFMLabeler.fit_transform(raw_df)       # convenience: returns rfm_df with cluster
+- Attributes: rfm_, scaler_, model_, cluster_profiles_, high_risk_label_
+"""
+from typing import Optional, List, Dict
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -10,84 +15,110 @@ from sklearn.cluster import KMeans
 
 
 class RFMLabeler:
-    """
-    Computes RFM features and assigns 'is_high_risk' using KMeans clustering.
-    """
-
     def __init__(
         self,
-        customer_id_col='CustomerId',
-        date_col='TransactionStartTime',
-        amount_col='Amount',
-        n_clusters=3,
-        snapshot_date=None,
-        random_state=42,
-        scale_features=True,
+        id_col: str = "CustomerId",
+        time_col: str = "TransactionStartTime",
+        amount_col: str = "Amount",
+        snapshot_date: Optional[pd.Timestamp] = None,
+        n_clusters: int = 3,
+        random_state: int = 42,
+        scale: bool = True,
     ):
-        self.customer_id_col = customer_id_col
-        self.date_col = date_col
+        self.id_col = id_col
+        self.time_col = time_col
         self.amount_col = amount_col
-        self.n_clusters = n_clusters
         self.snapshot_date = snapshot_date
+        self.n_clusters = n_clusters
         self.random_state = random_state
-        self.scale_features = scale_features
-        self.scaler = None
-        self.kmeans = None
-        self.rfm_ = None
+        self.scale = scale
 
-    def compute_rfm(self, df: pd.DataFrame) -> pd.DataFrame:
+        # fitted attributes
+        self.rfm_: Optional[pd.DataFrame] = None
+        self.scaler_: Optional[StandardScaler] = None
+        self.model_: Optional[KMeans] = None
+        self.cluster_profiles_: Optional[pd.DataFrame] = None
+
+    def _compute_rfm(self, df: pd.DataFrame) -> pd.DataFrame:
         df = df.copy()
-        df[self.date_col] = pd.to_datetime(df[self.date_col])
-        if self.snapshot_date is None:
-            snapshot_date = df[self.date_col].max() + pd.Timedelta(days=1)
-        else:
-            snapshot_date = pd.to_datetime(self.snapshot_date)
-        # RFM
-        recency = df.groupby(self.customer_id_col)[self.date_col].max().apply(
-            lambda d: (snapshot_date - d).days)
-        frequency = df.groupby(self.customer_id_col).size()
-        monetary = df.groupby(self.customer_id_col)[self.amount_col].sum()
-        rfm = pd.DataFrame({
-            'Recency': recency,
-            'Frequency': frequency,
-            'Monetary': monetary,
-        })
-        rfm.index.name = self.customer_id_col
-        return rfm
+        if self.time_col not in df.columns:
+            raise KeyError(
+                f"time_col '{self.time_col}' not found in DataFrame")
+        df[self.time_col] = pd.to_datetime(df[self.time_col])
+        snapshot = pd.to_datetime(
+            self.snapshot_date) if self.snapshot_date is not None else df[self.time_col].max() + pd.Timedelta(days=1)
 
-    def fit(self, df: pd.DataFrame):
-        rfm = self.compute_rfm(df)
-        X = rfm.values
-        # Scale for clustering
-        if self.scale_features:
-            self.scaler = StandardScaler()
-            X_scaled = self.scaler.fit_transform(X)
+        agg = (
+            df.groupby(self.id_col)
+            .agg(
+                last_tx=(self.time_col, "max"),
+                Recency=(self.time_col, lambda x: (snapshot - x.max()).days),
+                Frequency=(self.time_col, "count"),
+                Monetary=(self.amount_col, "sum"),
+            )
+        )
+        # coerce types
+        agg["Recency"] = agg["Recency"].astype(float)
+        agg["Frequency"] = agg["Frequency"].astype(float)
+        agg["Monetary"] = agg["Monetary"].astype(float)
+        agg = agg.drop(columns=["last_tx"], errors="ignore")
+        return agg
+
+    def fit(self, raw_df: pd.DataFrame):
+        """Compute RFM and fit scaler + KMeans on RFM features."""
+        self.rfm_ = self._compute_rfm(raw_df)
+        features = ["Recency", "Frequency", "Monetary"]
+        X = self.rfm_[features].fillna(0).values
+
+        if self.scale:
+            self.scaler_ = StandardScaler()
+            Xs = self.scaler_.fit_transform(X)
         else:
-            X_scaled = X
-        self.kmeans = KMeans(n_clusters=self.n_clusters,
-                             random_state=self.random_state)
-        cluster = self.kmeans.fit_predict(X_scaled)
-        rfm['cluster'] = cluster
-        self.rfm_ = rfm
+            Xs = X
+
+        km = KMeans(n_clusters=self.n_clusters,
+                    random_state=self.random_state, n_init=10)
+        labels = km.fit_predict(Xs)
+
+        self.rfm_ = self.rfm_.assign(cluster=labels)
+        self.model_ = km
+        self.cluster_profiles_ = self.rfm_.groupby(
+            "cluster")[["Frequency", "Monetary", "Recency"]].mean()
         return self
 
-    def predict(self, df: pd.DataFrame) -> pd.DataFrame:
-        rfm = self.compute_rfm(df)
-        X = rfm.values
-        if self.scaler is not None:
-            X_scaled = self.scaler.transform(X)
+    def transform(self, customers_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Given customers_df containing id_col (column), return DataFrame
+        with columns [id_col, cluster] for the customers present in rfm_.
+        """
+        if self.rfm_ is None:
+            raise RuntimeError(
+                "RFMLabeler.fit must be called before transform()")
+        df_map = self.rfm_.reset_index()[[self.id_col, "cluster"]].copy()
+        # If customers_df contains the id_col, preserve order/subset
+        if self.id_col in customers_df.columns:
+            result = customers_df[[self.id_col]].drop_duplicates().merge(
+                df_map, on=self.id_col, how="left")
         else:
-            X_scaled = X
-        clusters = self.kmeans.predict(X_scaled)
-        rfm['cluster'] = clusters
-        # Identify high-risk cluster (max Recency, min Frequency & Monetary)
-        centers = pd.DataFrame(self.kmeans.cluster_centers_, columns=[
-                               'Recency', 'Frequency', 'Monetary'])
-        # Highest recency = least recent
-        risk_idx = centers['Recency'].idxmax()
-        rfm['is_high_risk'] = (rfm['cluster'] == risk_idx).astype(int)
-        return rfm[['Recency', 'Frequency', 'Monetary', 'cluster', 'is_high_risk']]
+            # fallback: return mapping for all known customers
+            result = df_map.copy()
+        return result
 
-    def fit_predict(self, df: pd.DataFrame) -> pd.DataFrame:
-        self.fit(df)
-        return self.predict(df)
+    def fit_transform(self, raw_df: pd.DataFrame) -> pd.DataFrame:
+        self.fit(raw_df)
+        return self.rfm_.reset_index()
+
+
+# quick smoke test
+if __name__ == "__main__":
+    sample = pd.DataFrame(
+        [
+            {"CustomerId": "A", "Amount": 100, "TransactionStartTime": "2025-01-01"},
+            {"CustomerId": "A", "Amount": 50, "TransactionStartTime": "2025-01-05"},
+            {"CustomerId": "B", "Amount": 10, "TransactionStartTime": "2024-06-01"},
+            {"CustomerId": "C", "Amount": 0, "TransactionStartTime": "2023-01-01"},
+        ]
+    )
+    r = RFMLabeler()
+    r.fit(sample)
+    print(r.rfm_.head())

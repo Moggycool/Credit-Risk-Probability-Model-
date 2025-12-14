@@ -1,6 +1,5 @@
 data/
 .vscode
-*__pycache__
 .genv/
 .env
 *.__pycache__*.cpython-*py
@@ -8,5 +7,9 @@ data/
 *.cpython-313.pyc
 __pycache__/
 *.pytest_cache/
-.__pycache__/
+*.pyc
+*.pyd
+*.pyo
+
+
 *.ipynb_checkpoints/
