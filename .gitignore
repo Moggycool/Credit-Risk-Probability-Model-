@@ -1,9 +1,11 @@
+# Byte-compiled / optimized / DLL files
 data/
 .vscode
 .genv/
 .env
 *.__pycache__*.cpython-*py
-.ipynb_checkpoints/
+# Byte-compiled / optimized / DLL files
+*.ipynb_checkpoints/
 *.cpython-313.pyc
 __pycache__/
 *.pytest_cache/
@@ -12,7 +14,7 @@ __pycache__/
 *.pyo
 
 
-*.ipynb_checkpoints/
+
 
 # Ignore local MLflow SQLite DB files (should not be checked into Git)
 mlflow.db
