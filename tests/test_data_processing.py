@@ -1,10 +1,13 @@
+"""Tests for data processing functions."""
+from typing import Tuple, Dict, Any
+from sklearn.dummy import DummyClassifier
 import pandas as pd
 import numpy as np
-from model_training import prepare_data, evaluate_model, make_pipeline_with_scaler
-from sklearn.dummy import DummyClassifier
+from src.model_training import prepare_data, evaluate_model, make_pipeline_with_scaler
 
 
 def synthetic_df(n_customers=100, seed=0):
+    """Generate a synthetic transactions DataFrame and aggregate to customer-level features."""
     # Use the new Generator API (default_rng) to avoid deprecation/type-checker warnings
     rng = np.random.default_rng(seed)
     ids = [f"C{i}" for i in range(n_customers)]
