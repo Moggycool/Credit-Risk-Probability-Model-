@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  ptv-api:
+    build: .
+    container_name: ptv-api
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_NAME: "PTV-Best"              # set to your MLflow model name if using registry
+      MODEL_STAGE: "production"           # or "Staging"
+      MODEL_LOCAL_PATH: "/app/models/ptv_best.pkl"  # optional fallback inside container
+      MLFLOW_TRACKING_URI: ""             # set if you use remote tracking server
+    volumes:
+      - ./models:/app/models              # mount models if using local fallback
+    restart: unless-stopped
