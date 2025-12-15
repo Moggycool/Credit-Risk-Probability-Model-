@@ -10,7 +10,6 @@ jobs:
   lint:
     name: Lint (flake8)
     runs-on: ubuntu-22.04
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -73,10 +72,11 @@ jobs:
           fi
 
       - name: Run tests
+        # If you need MLflow or similar secrets in CI, set them as repository
+        # secrets and expose them here in the `env` mapping. Example (do not
+        # include secret expressions in comments to avoid diagnostics):
+        # env:
+        #   MLFLOW_TRACKING_URI: ${{ secrets.MLFLOW_TRACKING_URI }}
         env: {}
         run: |
-          # If you use MLflow in tests, set a repository secret named
-          # MLFLOW_TRACKING_URI in GitHub and then expose it via an env
-          # mapping in this step (example omitted to avoid YAML/diagnostic
-          # noise). For now the env mapping is intentionally empty.
           pytest -q --maxfail=1
