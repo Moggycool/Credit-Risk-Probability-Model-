@@ -6,10 +6,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MODEL_NAME: "PTV-Best"              # set to your MLflow model name if using registry
-      MODEL_STAGE: "production"           # or "Staging"
-      MODEL_LOCAL_PATH: "/app/models/ptv_best.pkl"  # optional fallback inside container
-      MLFLOW_TRACKING_URI: ""             # set if you use remote tracking server
+      MODEL_LOCAL_PATH: "/app/models/random_forest_best.pkl"
+      MODEL_STAGE: "production"
+      MODEL_NAME: ""
+      # MLFLOW_TRACKING_URI: "http://mlflow:5000"  # if using remote registry
     volumes:
-      - ./models:/app/models              # mount models if using local fallback
+      - ./models:/app/models:ro
     restart: unless-stopped

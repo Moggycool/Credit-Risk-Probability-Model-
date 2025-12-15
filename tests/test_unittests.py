@@ -1,4 +1,3 @@
-
 """ Unit tests for basic functionality."""
 from unittest import IsolatedAsyncioTestCase
 
