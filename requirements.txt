@@ -65,7 +65,7 @@ multimethod==1.12
 nest-asyncio==1.6.0
 networkx==3.4.2
 numba==0.62.1
-numpy==2.3.5
+numpy==2.2.6
 opentelemetry-api==1.39.1
 opentelemetry-proto==1.39.1
 opentelemetry-sdk==1.39.1
