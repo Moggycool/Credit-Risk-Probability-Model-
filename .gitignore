@@ -1,18 +1,30 @@
+# Data (should not be versioned)
 data/
-.vscode
-.genv/
+
+# Virtual environments
+genv/
+venv/
+.venv/
+
+# Environment variables
 .env
-*.__pycache__*.cpython-*py
+
+# VS Code
+.vscode/
+
+# Jupyter
 .ipynb_checkpoints/
-*.cpython-313.pyc
+
+# Python cache / compiled files
 __pycache__/
-*.pytest_cache/
-*.pyc
+*.py[cod]
 *.pyd
 *.pyo
+*.cpython-*.pyc
 
+# Pytest
+.pytest_cache/
 
-*.ipynb_checkpoints/
 
 # Ignore local MLflow SQLite DB files (should not be checked into Git)
 mlflow.db
