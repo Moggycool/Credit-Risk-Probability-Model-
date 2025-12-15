@@ -1,3 +1,4 @@
+"""Pydantic models for API request and response validation."""
 from typing import Dict, Optional
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,7 @@ class PredictionRequest(BaseModel):
 
 
 class PredictionResponse(BaseModel):
+    """ Response model for prediction results."""
     probability: float = Field(..., ge=0.0, le=1.0,
                                description="Predicted risk probability (0..1)")
     predicted_class: Optional[int] = Field(

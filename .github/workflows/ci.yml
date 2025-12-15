@@ -1,66 +1,82 @@
-# GitHub Actions CI: lint and test on push / PR to main & develop
 name: CI
 
 on:
-    push:
-        branches: [main, develop]
-    pull_request:
-        branches: [main, develop]
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
 
 jobs:
-    test:
-        runs-on: ubuntu-22.04
-        strategy:
-            matrix:
-                python-version: ["3.10", "3.11"]
+  lint:
+    name: Lint (flake8)
+    runs-on: ubuntu-22.04
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Set up Python
-              uses: actions/setup-python@v4
-              with:
-                  python-version: ${{ matrix.python-version }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
 
-            - name: Cache pip
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cache/pip
-                  key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
-                  restore-keys: |
-                      ${{ runner.os }}-pip-${{ matrix.python-version }}-
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-3.11-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-3.11-
 
-            - name: Install dependencies
-              run: |
-                  set -e
-                  python -m pip install --upgrade pip
-                  if [ -f "requirements.txt" ]; then
-                    pip install --no-cache-dir -r requirements.txt
-                  else
-                    # Minimal fallback for lint+tests when no requirements.txt is present.
-                    pip install --no-cache-dir pytest flake8
-                  fi
+      - name: Install flake8
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
 
-            - name: Lint with flake8
-              # Fail the job if flake8 finds issues
-              run: |
-                  # Optionally tweak flake8 args (e.g., max-line-length) or add --config=.flake8
-                  if ! command -v flake8 >/dev/null 2>&1; then
-                    echo "flake8 not installed. Ensure it is listed in requirements.txt."
-                    exit 1
-                  fi
-                  echo "Running flake8..."
-                  flake8 .
+      - name: Run flake8
+        run: |
+          echo "Running flake8..."
+          flake8 .
 
-            - name: Run tests
-              run: |
-                  pytest -q --maxfail=1
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
 
-            # Optional: collect test reports or artifacts (uncomment if using junit or coverage)
-            # - name: Upload test results
-            #   if: always()
-            #   uses: actions/upload-artifact@v4
-            #   with:
-            #     name: pytest-report-${{ matrix.python-version }}
-            #     path: ./tests-reports || ./junit.xml
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
+
+      - name: Install dependencies
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          if [ -f "requirements.txt" ]; then
+            pip install --no-cache-dir -r requirements.txt
+          else
+            pip install --no-cache-dir pytest
+          fi
+
+      - name: Run tests
+        env: {}
+        run: |
+          # If you use MLflow in tests, set a repository secret named
+          # MLFLOW_TRACKING_URI in GitHub and then expose it via an env
+          # mapping in this step (example omitted to avoid YAML/diagnostic
+          # noise). For now the env mapping is intentionally empty.
+          pytest -q --maxfail=1
