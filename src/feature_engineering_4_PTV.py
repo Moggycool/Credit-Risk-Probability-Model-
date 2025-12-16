@@ -9,8 +9,11 @@ Provides:
 - WoEIVCalculator: Calculates Weight of Evidence (WoE) and Information Value (IV) for binary targets.
 - RFMEngineer: Creates a proxy binary target (is_high_risk) using RFM + KMeans clustering.
 - feature_engineering_pipeline: Executes all steps and returns engineered DataFrame and documentation.
-"""
 
+Additional helpers added:
+- save_model_artifacts(model, X_train, models_dir="models", model_name="logistic_best.pkl")
+  Saves joblib model, feature_names.json and model_metadata.json into the chosen models directory.
+"""
 from typing import List, Optional, Tuple, Dict
 import pandas as pd
 import numpy as np
@@ -19,6 +22,14 @@ from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.cluster import KMeans
 
+# New imports for saving model artifacts
+import joblib
+import json
+from pathlib import Path
+from datetime import datetime
+import platform
+import sklearn
+
 __all__ = [
     "TransactionAggregator",
     "TemporalFeatureEngineer",
@@ -26,7 +37,8 @@ __all__ = [
     "FeatureNormalizer",
     "WoEIVCalculator",
     "RFMEngineer",
-    "feature_engineering_pipeline"
+    "feature_engineering_pipeline",
+    "save_model_artifacts",
 ]
 
 
@@ -549,6 +561,67 @@ def feature_engineering_pipeline(
     return feat_df, feat_desc
 
 
+def save_model_artifacts(model, feature_df: Optional[pd.DataFrame] = None, models_dir: str = "models", model_name: str = "logistic_best.pkl"):
+    """
+    Save model and feature list to disk for serving.
+
+    - model: trained estimator (e.g., sklearn Pipeline)
+    - feature_df: DataFrame used for training (columns will be used as feature names). If not provided,
+      the function will try to read feature names from model.feature_names_in_ or fallback to None.
+    - models_dir: directory to save artifacts into (created if missing)
+    - model_name: filename for joblib model
+
+    Creates:
+      - {models_dir}/{model_name}            (joblib dump)
+      - {models_dir}/feature_names.json     (list of feature column names)
+      - {models_dir}/model_metadata.json    (basic metadata: timestamp, sklearn/python versions)
+    """
+    models_path = Path(models_dir)
+    models_path.mkdir(parents=True, exist_ok=True)
+
+    model_path = models_path / model_name
+    try:
+        joblib.dump(model, model_path)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to save model to {model_path}: {exc}")
+
+    # Determine feature names
+    feature_names = None
+    if feature_df is not None:
+        feature_names = list(feature_df.columns)
+    else:
+        # try model.feature_names_in_
+        try:
+            feature_names = list(getattr(model, "feature_names_in_", None)) if getattr(
+                model, "feature_names_in_", None) is not None else None
+        except Exception:
+            feature_names = None
+
+    if feature_names:
+        feats_path = models_path / "feature_names.json"
+        try:
+            with open(feats_path, "w", encoding="utf-8") as fh:
+                json.dump(feature_names, fh, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to save feature names to {feats_path}: {exc}")
+
+    # Save metadata
+    meta = {
+        "model_file": model_path.name,
+        "saved_at": datetime.utcnow().isoformat() + "Z",
+        "scikit_learn_version": sklearn.__version__ if hasattr(sklearn, "__version__") else None,
+        "python_version": platform.python_version(),
+    }
+    meta_path = models_path / "model_metadata.json"
+    try:
+        with open(meta_path, "w", encoding="utf-8") as fh:
+            json.dump(meta, fh, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to save model metadata to {meta_path}: {exc}")
+
+    return {"model_path": str(model_path), "features_saved": bool(feature_names), "metadata_path": str(meta_path)}
+
+
 # Make pipeline visible for static analysis tools
 _ = feature_engineering_pipeline
 
@@ -567,3 +640,17 @@ if __name__ == "__main__":
         sample, categorical_cols=["ProductCategory", "ChannelId"])
     print("Smoke test — features:", feat_df_smoke.shape,
           "desc:", feat_desc_smoke.shape)
+
+    # Example: save a trivial model (for demonstration only)
+    try:
+        from sklearn.dummy import DummyClassifier
+        clf = DummyClassifier(strategy="most_frequent")
+        # Example training target (from created features) - this is only illustrative
+        y = feat_df_smoke.get("is_high_risk", pd.Series([0] * len(feat_df_smoke)))
+        # A minimal pipeline fit so model can be saved in the demo
+        clf.fit(np.zeros((len(y), 1)), y)
+        result = save_model_artifacts(
+            clf, feature_df=feat_df_smoke, models_dir="models", model_name="demo_dummy.pkl")
+        print("Saved demo model artifacts:", result)
+    except Exception as exc:
+        print("Demo model save failed (this is non-fatal):", exc)
