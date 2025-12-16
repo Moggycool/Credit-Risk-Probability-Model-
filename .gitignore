@@ -35,4 +35,4 @@ models/
 # Ignore OS generated files
 .DS_Store
 
-.venv/ genv/ env/ .vscode/ pycache/ *.pyc
+.venv/ genv/ env/ .vscode/ pycache/ *.pyclogs/
