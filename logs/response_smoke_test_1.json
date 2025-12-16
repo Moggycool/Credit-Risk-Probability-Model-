@@ -1,6 +1,1 @@
-{
-  "probability": 1.0,
-  "predicted_class": 1,
-  "customer_id": "smoke_test_1",
-  "model": "local:/app/models/logistic_best.pkl"
-}
+{"detail":[{"type":"json_invalid","loc":["body",0],"msg":"JSON decode error","input":{},"ctx":{"error":"Expecting value"}}]}

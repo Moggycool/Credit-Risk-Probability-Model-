@@ -63,3 +63,71 @@ credit-risk-model/
 ```
 
 ---
+## API smoke test
+
+curl -X 'POST' \
+  'http://127.0.0.1:8000/predict' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "customer_id": "smoke_test_1",
+  "features": {
+    "Amount_sum": 0,
+    "Amount_mean": 0,
+    "Amount_max": 0,
+    "Amount_std": 0,
+    "Amount_skew": 0,
+    "Value_sum": 0,
+    "Value_mean": 0,
+    "Value_max": 0,
+    "Value_std": 0,
+    "Value_skew": 0,
+    "TransactionStartTime_count": 0,
+    "TransactionStartTime_ < lambda_0 >": 0,
+    "Hour_mean": 0,
+    "Hour_std": 0,
+    "Weekday_mean": 0,
+    "Weekday_std": 0,
+    "Day_mean": 0,
+    "Day__first_mode_or_nan": 0,
+    "Month_mean": 0,
+    "Month__first_mode_or_nan": 0,
+    "Year_mean": 0,
+    "Year__first_mode_or_nan": 0,
+    "IsWeekend_mean": 0,
+    "CurrencyCode_UGX": 0,
+    "ProviderId_ProviderId_1": 0,
+    "ProviderId_ProviderId_2": 0,
+    "ProviderId_ProviderId_3": 0,
+    "ProviderId_ProviderId_4": 0,
+    "ProviderId_ProviderId_5": 0,
+    "ProviderId_ProviderId_6": 0,
+    "ChannelId_ChannelId_1": 0,
+    "ChannelId_ChannelId_2": 0,
+    "ChannelId_ChannelId_3": 0,
+    "ChannelId_ChannelId_5": 0,
+    "TransactionId_freq": 0,
+    "BatchId_freq": 0,
+    "AccountId_freq": 0,
+    "SubscriptionId_freq": 0,
+    "ProductId_freq": 0,
+    "ProductCategory_freq": 0,
+    "Amount_sum_log_std": 0,
+    "Amount_mean_log_std": 0,
+    "Amount_max_log_std": 0,
+    "Amount_skew_log_std": 0,
+    "Value_mean_log_std": 0,
+    "Value_skew_log_std": 0,
+    "TransactionId_woe": 0,
+    "BatchId_woe": 0,
+    "AccountId_woe": 0,
+    "SubscriptionId_woe": 0,
+    "CurrencyCode_woe": 0,
+    "ProviderId_woe": 0,
+    "ProductId_woe": 0,
+    "ProductCategory_woe": 0,
+    "ChannelId_woe": 0
+  }
+}'
+Request URL
+http://127.0.0.1:8000/predict
