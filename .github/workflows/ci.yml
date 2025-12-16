@@ -68,8 +68,24 @@ jobs:
           if [ -f "requirements.txt" ]; then
             pip install --no-cache-dir -r requirements.txt
           else
-            pip install --no-cache-dir pytest
+            pip install --no-cache-dir pytest scikit-learn joblib
           fi
+
+      - name: Create dummy model for tests
+        run: |
+          python - <<'PY'
+          import os, joblib
+          from sklearn.dummy import DummyClassifier
+          import numpy as np
+          os.makedirs("models", exist_ok=True)
+          clf = DummyClassifier(strategy="most_frequent")
+          # create trivial training data for a valid fitted estimator
+          X = np.zeros((2, 1))
+          y = [0, 0]
+          clf.fit(X, y)
+          joblib.dump(clf, "models/dummy_model.pkl")
+          print("Wrote models/dummy_model.pkl")
+          PY
 
             - name: Run tests with coverage
               run: |
