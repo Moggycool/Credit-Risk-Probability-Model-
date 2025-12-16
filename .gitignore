@@ -29,3 +29,10 @@ __pycache__/
 # Ignore local MLflow SQLite DB files (should not be checked into Git)
 mlflow.db
 **/mlflow.db
+# Ignore Jupyter notebook checkpoints and MLflow runs
+notebooks/mlruns/ mlruns/ mlflow.db 
+models/
+# Ignore OS generated files
+.DS_Store
+
+.venv/ genv/ env/ .vscode/ pycache/ *.pyc

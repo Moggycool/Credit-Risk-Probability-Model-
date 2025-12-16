@@ -1,0 +1,23 @@
+# Python / virtualenv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.env
+venv
+genv
+.venv
+.git
+.gitignore
+
+# Jupyter / notebooks / MLflow runs (large)
+notebooks
+notebooks/mlruns
+mlruns
+
+# Models (we mount at runtime) — exclude so build is small
+models
+
+# OS / IDE
+.vscode
+.DS_Store
