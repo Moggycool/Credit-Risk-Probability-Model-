@@ -227,7 +227,6 @@ _predictor = Predictor()
 
 def get_predictor() -> Predictor:
     """Return the global predictor, loading the model on demand."""
-    global _predictor
     if _predictor.model is None:
         _predictor.load()
     return _predictor
