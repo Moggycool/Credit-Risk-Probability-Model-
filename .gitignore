@@ -1,21 +1,38 @@
-# Byte-compiled / optimized / DLL files
+# Data (should not be versioned)
 data/
-.vscode
-.genv/
+
+# Virtual environments
+genv/
+venv/
+.venv/
+
+# Environment variables
 .env
-*.__pycache__*.cpython-*py
-# Byte-compiled / optimized / DLL files
-*.ipynb_checkpoints/
-*.cpython-313.pyc
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python cache / compiled files
 __pycache__/
-*.pytest_cache/
-*.pyc
+*.py[cod]
 *.pyd
 *.pyo
+*.cpython-*.pyc
 
-
+# Pytest
+.pytest_cache/
 
 
 # Ignore local MLflow SQLite DB files (should not be checked into Git)
 mlflow.db
 **/mlflow.db
+# Ignore Jupyter notebook checkpoints and MLflow runs
+notebooks/mlruns/ mlruns/ mlflow.db 
+models/
+# Ignore OS generated files
+.DS_Store
+
+.venv/ genv/ env/ .vscode/ pycache/ *.pyc
