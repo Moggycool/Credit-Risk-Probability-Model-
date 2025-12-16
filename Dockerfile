@@ -15,7 +15,7 @@ RUN python -m pip install --upgrade pip wheel setuptools \
     && python -m pip wheel --no-cache-dir --wheel-dir /wheels -r /app/requirements-prod.txt
 
 # Runtime image
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
