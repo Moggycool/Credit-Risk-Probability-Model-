@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  ptv-api:
+    build: .
+    container_name: ptv-api
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_LOCAL_PATH: "/app/models/random_forest_best.pkl"
+      MODEL_STAGE: "production"
+      MODEL_NAME: ""
+      # MLFLOW_TRACKING_URI: "http://mlflow:5000"  # if using remote registry
+    volumes:
+      - ./models:/app/models:ro
+    restart: unless-stopped
