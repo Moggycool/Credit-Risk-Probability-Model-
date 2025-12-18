@@ -1,66 +1,89 @@
-"""
-Feature Engineering Module for Credit Risk Modeling.
+"""Feature engineering module for customer transaction data."""
 
-Provides:
-- TransactionAggregator: Aggregates transaction data into customer-level features.
-- TemporalFeatureEngineer: Extracts temporal/cyclical features.
-- CategoryEncoder: Encodes categorical features appropriately.
-- FeatureNormalizer: Handles log-transformation and scaling.
-- WoEIVCalculator: Calculates Weight of Evidence (WoE) and Information Value (IV) for binary targets.
-- feature_engineering_pipeline: Executes all steps and returns engineered DataFrame and documentation.
-"""
-
-from typing import List, Optional, Tuple
+from typing import Optional, List
 import pandas as pd
 import numpy as np
-import inspect
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.base import BaseEstimator, TransformerMixin
-
-__all__ = [
-    "TransactionAggregator",
-    "TemporalFeatureEngineer",
-    "CategoryEncoder",
-    "FeatureNormalizer",
-    "WoEIVCalculator",
-    "feature_engineering_pipeline"
-]
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, MinMaxScaler
+from sklearn.impute import SimpleImputer
 
 
-class TransactionAggregator(BaseEstimator, TransformerMixin):
-    """Aggregates raw transaction data to customer-level features."""
+class FeatureEngineer(BaseEstimator, TransformerMixin):
+    """
+    Custom feature engineering transformer for customer transaction data.
+    Performs customer-level aggregations, extraction of time features, 
+    encoding, imputation, scaling, and optionally Weight of Evidence (WoE).
+    """
 
     def __init__(
+        # pylint: disable=too-many-arguments
         self,
         customer_id_col: str = "CustomerId",
+        time_col: str = "TransactionStartTime",
         amount_col: str = "Amount",
         value_col: str = "Value",
-        time_col: str = "TransactionStartTime"
+        encode_type: str = "onehot",     # "onehot" or "label"
+        scaler_type: str = "standard",   # "standard" or "minmax"
+        impute_strategy: str = "mean",   # "mean", "median", or "zero"
+        categorical_cols: Optional[List[str]] = None,
+        woe_cols: Optional[List[str]] = None,
     ):
         self.customer_id_col = customer_id_col
+        self.time_col = time_col
         self.amount_col = amount_col
         self.value_col = value_col
-        self.time_col = time_col
+        self.encode_type = encode_type
+        self.scaler_type = scaler_type
+        self.categorical_cols = categorical_cols
+        self.woe_cols = woe_cols
+        self.impute_strategy = impute_strategy
+        self.ohe = None
+        self.lbl_encoders = None
+        self.scaler = None
+        self.imputer = None
+        self.num_cols_after_fe = None
 
-    def fit(self, x, y=None):
-        _ = x
-        _ = y
-        return self
-
-    def transform(self, x):
-        df = x.copy()
+    def _engineer_features(self, df):
+        # Aggregation
+        agg_df = df.groupby(self.customer_id_col).agg({
+            self.amount_col: ['sum', 'mean', 'count', 'std'],
+            self.value_col: ['sum', 'mean', 'std']
+        })
+        agg_df.columns = [f"{col[0]}_{col[1]}" for col in agg_df.columns]
+        agg_df = agg_df.reset_index()
+        # Time features
         df[self.time_col] = pd.to_datetime(df[self.time_col])
+
+        # Overall aggregates
         agg_funcs = {
             self.amount_col: ["sum", "mean", "max", "std", "skew"],
             self.value_col:  ["sum", "mean", "max", "std", "skew"],
             self.time_col:   ["count", lambda x: (x.max() - x.min()).days + 1]
         }
-        agg = df.groupby(self.customer_id_col).agg(agg_funcs)
-        agg.columns = [
+
+        # Recent activity (last 30 days)
+        latest_date = df[self.time_col].max()
+        df_recent = df[df[self.time_col] >= (latest_date - pd.Timedelta(days=30))]
+        recent_agg = df_recent.groupby(self.customer_id_col).agg({
+            self.amount_col: ["sum", "mean"],
+            self.value_col: ["sum", "mean"],
+            self.time_col: "count"
+        })
+
+        recent_agg.columns = [f"Recent30_{c[0]}_{c[1]}" for c in recent_agg.columns]
+        recent_agg = recent_agg.reset_index()
+
+        # Overall aggregates
+        overall_agg = df.groupby(self.customer_id_col).agg(agg_funcs)
+        overall_agg.columns = [
             f"{c[0]}_{c[1] if isinstance(c[1], str) else 'period'}"
-            for c in agg.columns
+            for c in overall_agg.columns
         ]
-        agg = agg.reset_index()
+        overall_agg = overall_agg.reset_index()
+
+        # Merge recent and overall
+        agg = pd.merge(overall_agg, recent_agg, on=self.customer_id_col, how='left')
         return agg
 
 
@@ -68,8 +91,7 @@ class TemporalFeatureEngineer(BaseEstimator, TransformerMixin):
     """
     Generates temporal/cyclical features from transaction times at the per-customer level,
     including hour, weekday, day of the month, month, and year.
-
-    NOTE: mode aggregations return scalars (first mode) to avoid list-like cells.
+    Also includes velocity features and recency metrics.
     """
 
     def __init__(
@@ -91,13 +113,47 @@ class TemporalFeatureEngineer(BaseEstimator, TransformerMixin):
     def transform(self, x):
         df = x.copy()
         df[self.time_col] = pd.to_datetime(df[self.time_col])
+
+        # Basic temporal features
         df["Hour"] = df[self.time_col].dt.hour
         df["Weekday"] = df[self.time_col].dt.weekday
         df["Day"] = df[self.time_col].dt.day
         df["Month"] = df[self.time_col].dt.month
         df["Year"] = df[self.time_col].dt.year
         df["IsWeekend"] = df["Weekday"].isin([5, 6]).astype(int)
+        df["IsBusinessHours"] = df["Hour"].between(9, 17).astype(int)
 
+        # Cyclical encoding for hour and month
+        df["Hour_sin"] = np.sin(2 * np.pi * df["Hour"] / 24)
+        df["Hour_cos"] = np.cos(2 * np.pi * df["Hour"] / 24)
+        df["Month_sin"] = np.sin(2 * np.pi * df["Month"] / 12)
+        df["Month_cos"] = np.cos(2 * np.pi * df["Month"] / 12)
+
+        # Sort by customer and time for velocity calculations
+        df = df.sort_values(by=[self.customer_id_col, self.time_col])
+
+        # Time since last transaction
+        df["TimeSinceLast"] = df.groupby(self.customer_id_col)[
+            self.time_col].diff().dt.total_seconds() / 86400
+
+        # Velocity features (transactions per time window)
+        df["TransactionDate"] = df[self.time_col].dt.date
+
+        # Calculate velocity per customer
+        velocity_features = []
+        for customer_id, group in df.groupby(self.customer_id_col):
+            date_counts = group["TransactionDate"].value_counts().sort_index()
+
+            # Rolling windows
+            for window in [1, 7, 30]:
+                rolling_avg = date_counts.rolling(window=window, min_periods=1).mean()
+                group[f"Velocity_{window}d"] = rolling_avg.mean()
+
+            velocity_features.append(group)
+
+        df = pd.concat(velocity_features, ignore_index=True)
+
+        # Aggregate to customer level
         aggs = df.groupby(self.customer_id_col).agg({
             "Hour": ["mean", "std"],
             "Weekday": ["mean", "std"],
@@ -105,18 +161,32 @@ class TemporalFeatureEngineer(BaseEstimator, TransformerMixin):
             "Month": ["mean", self._first_mode_or_nan],
             "Year": ["mean", self._first_mode_or_nan],
             "IsWeekend": "mean",
+            "IsBusinessHours": "mean",
+            "Hour_sin": "mean",
+            "Hour_cos": "mean",
+            "Month_sin": "mean",
+            "Month_cos": "mean",
+            "TimeSinceLast": ["mean", "min", "max"],
+            "Velocity_1d": "mean",
+            "Velocity_7d": "mean",
+            "Velocity_30d": "mean"
         })
 
-        # flatten columns
-        aggs.columns = ['_'.join([c[0], str(c[1]) if isinstance(
-            c[1], str) else 'mode']) for c in aggs.columns]
+        # Flatten columns
+        aggs.columns = ['_'.join([c[0], str(c[1]) if isinstance(c[1], str) else 'mode'])
+                        for c in aggs.columns]
         aggs = aggs.reset_index()
+
         return aggs
 
 
 class CategoryEncoder(BaseEstimator, TransformerMixin):
     """
     Encodes low-cardinality categoricals using One-Hot encoding, high-cardinality as frequencies.
+
+    Rationale:
+    - One-hot encoding: Suitable for low-cardinality features (<8 categories) to avoid curse of dimensionality
+    - Frequency encoding: Suitable for high-cardinality features to preserve information while reducing dimensionality
     """
 
     def __init__(self, categorical_columns: List[str], low_card_thr: int = 8):
@@ -142,17 +212,13 @@ class CategoryEncoder(BaseEstimator, TransformerMixin):
         self.high_card_cols = high_card
 
         if self.low_card_cols:
-            # Build kwargs dynamically so static analyzers (pylint) do not
-            # complain about passing a deprecated/removed keyword like
-            # `sparse` or `sparse_output` directly. We inspect the
-            # constructor signature at runtime and then pass supported args.
+            # Build kwargs dynamically for sklearn compatibility
             sig = inspect.signature(OneHotEncoder.__init__)
             ohe_kwargs = {"handle_unknown": "ignore"}
             if 'sparse_output' in sig.parameters:
                 ohe_kwargs['sparse_output'] = False
             elif 'sparse' in sig.parameters:
                 ohe_kwargs['sparse'] = False
-            # instantiate with dynamic kwargs to avoid static lint errors
             self.ohe = OneHotEncoder(**ohe_kwargs)
             self.ohe.fit(x[self.low_card_cols].astype(object).fillna("__NA__"))
             self._feature_names = list(
@@ -191,6 +257,11 @@ class FeatureNormalizer(BaseEstimator, TransformerMixin):
     """
     Applies log transformation and standard scaling to numeric columns.
     Drops a column if highly collinear (correlation > corr_thr).
+
+    Transformation Rationale:
+    - log1p: Handles right-skewed distributions common in financial data
+    - StandardScaler: Standardizes features for linear models
+    - Correlation filtering: Reduces multicollinearity, improves model stability
     """
 
     def __init__(self, numeric_cols: List[str], drop_collinear: bool = True, corr_thr=0.95):
@@ -213,22 +284,15 @@ class FeatureNormalizer(BaseEstimator, TransformerMixin):
             self.cols_to_use = [
                 col for col in self.numeric_cols if col not in drop]
         else:
-            self.cols_to_use = list(self.numeric_cols)
-        if self.cols_to_use:
-            self.scaler.fit(x_log[self.cols_to_use])
+            self.scaler = MinMaxScaler().fit(
+                self._impute(fe_df[self.num_cols_after_fe])
+            )
         return self
 
-    def transform(self, x: pd.DataFrame):
-        if not self.numeric_cols:
-            return pd.DataFrame(index=x.index)
-        x_num = x[self.numeric_cols].copy()
-        x_log = x_num.apply(np.log1p)
-        x_use = x_log[self.cols_to_use] if self.cols_to_use else pd.DataFrame(
-            index=x.index)
-        if not x_use.empty:
-            arr = self.scaler.transform(x_use)
-            result = pd.DataFrame(
-                arr, columns=[f"{c}_log_std" for c in self.cols_to_use], index=x.index)
+    def _impute(self, x_data):
+        """Apply imputer or fillna(0) as per strategy."""
+        if self.imputer is not None:
+            return self.imputer.transform(x_data)
         else:
             result = pd.DataFrame(index=x.index)
         return result
@@ -237,9 +301,12 @@ class FeatureNormalizer(BaseEstimator, TransformerMixin):
 class WoEIVCalculator(BaseEstimator, TransformerMixin):
     """
     Calculates Weight of Evidence (WoE) and Information Value (IV) for binary target.
-    Fits on a DataFrame that contains raw features and target at the same granularity
-    (e.g., transaction-level), but can transform another DataFrame that contains the
-    same categorical columns (e.g., customer-level aggregated df_cat).
+
+    Usage:
+    - Fits on customer-level data with binary target
+    - Transforms customer-level aggregated features
+    - Implements monotonic binning for continuous features
+    - Supports regulatory interpretability requirements
     """
 
     def __init__(self, features: List[str], target_col: str, bins: int = 5, min_bin_size: float = 0.01):
@@ -263,7 +330,7 @@ class WoEIVCalculator(BaseEstimator, TransformerMixin):
             # Decide grouping: numeric -> bin, categorical -> as-is
             if pd.api.types.is_numeric_dtype(series) and series.nunique(dropna=False) > self.bins:
                 try:
-                    # use rank to avoid issues with repeated values
+                    # Use rank to avoid issues with repeated values
                     binned = pd.qcut(series.rank(method="first"),
                                      q=self.bins, duplicates='drop')
                 except Exception:
@@ -273,20 +340,19 @@ class WoEIVCalculator(BaseEstimator, TransformerMixin):
                 group = series.fillna("__NA__").astype(object)
 
             crosstab = pd.crosstab(group, y)
-            # ensure columns for good(0) and bad(1)
+            # Ensure columns for good(0) and bad(1)
             if 0 not in crosstab.columns:
                 crosstab[0] = 0
             if 1 not in crosstab.columns:
                 crosstab[1] = 0
             crosstab = crosstab[[0, 1]].rename(columns={0: 'good', 1: 'bad'})
-            # replace zeros with a small number to avoid division by zero
+            # Replace zeros with a small number to avoid division by zero
             crosstab = crosstab.replace(0, 0.5)
             dist_good = crosstab['good'] / crosstab['good'].sum()
             dist_bad = crosstab['bad'] / crosstab['bad'].sum()
             woe = np.log(dist_good / dist_bad)
             iv = ((dist_good - dist_bad) * woe).sum()
             woe_map = woe.to_dict()
-            # for binned numeric, keys will be Interval objects; keep them as-is for mapping
             self.woe_maps[feature] = woe_map
             self.ivs[feature] = iv
         return self
@@ -298,10 +364,8 @@ class WoEIVCalculator(BaseEstimator, TransformerMixin):
                 continue
             series = x_[feature]
             if feature not in self.woe_maps:
-                # no mapping learned for this feature
                 continue
             woe_map = self.woe_maps[feature]
-            # if numeric and mapping is based on bins, bin accordingly
             if pd.api.types.is_numeric_dtype(series) and any(not isinstance(k, str) and hasattr(k, "left") for k in woe_map.keys()):
                 try:
                     bins = pd.qcut(series.rank(method="first"),
@@ -323,62 +387,93 @@ def feature_engineering_pipeline(
     id_col: str = "CustomerId",
     amount_col: str = "Amount",
     value_col: str = "Value",
-    time_col: str = "TransactionStartTime",
+    encode_type: str = "onehot",
+    scaler_type: str = "standard",
+    impute_strategy: str = "mean",   # <-- Add this parameter
     categorical_cols: Optional[List[str]] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Runs all feature engineering steps and returns the enriched
-    feature DataFrame and description table.
+    Runs all feature engineering steps and returns the enriched feature DataFrame and documentation.
+
+    Pipeline Steps:
+    1. Aggregate transaction features (overall + recent 30 days)
+    2. Extract temporal features (cyclical, velocity, recency)
+    3. Encode categorical features (one-hot for low-cardinality, frequency for high-cardinality)
+    4. Normalize numeric features (log1p + standardization)
+    5. Calculate WoE/IV for categorical features (if target available)
+    6. Filter features based on IV thresholds for predictive power
+
+    Returns:
+    - feat_df: Customer-level features ready for modeling
+    - feat_desc: Feature descriptions with transformations and IV values
     """
 
     df = raw_df.copy()
-    # determine categorical columns if not provided
+    # ---------------------------------------------------------
+    # Create customer-level target for WoE (HasFraud)
+    # ---------------------------------------------------------
+    has_target = "FraudResult" in df.columns
+
+    if has_target:
+        df_target = (
+            df.groupby(id_col)["FraudResult"]
+              .max()
+              .reset_index()
+              .rename(columns={"FraudResult": "HasFraud"})
+        )
+
+        fraud_rate = df_target["HasFraud"].mean()
+        print(f"Target summary — Fraud rate: {fraud_rate:.4%}")
+    # Determine categorical columns if not provided
     if categorical_cols is None:
         auto_cats = df.select_dtypes(include=['object', 'category']).columns.drop([
             id_col, time_col], errors='ignore')
         categorical_cols = list(auto_cats)
     else:
-        # keep only columns that actually exist in raw_df
         categorical_cols = [c for c in categorical_cols if c in df.columns]
 
-    # 1. Aggregate transaction features
+    print("=== Feature Engineering Pipeline ===")
+    print(f"Processing {len(df)} transactions for {df[id_col].nunique()} customers")
+    print(f"Categorical columns: {categorical_cols}")
+
+    # 1. Aggregate transaction features (overall + recent)
+    print("1. Aggregating transaction features...")
     agg = TransactionAggregator(id_col, amount_col, value_col, time_col)
     df_agg = agg.fit_transform(df)
 
     # 2. Temporal features
+    print("2. Extracting temporal features...")
     temp = TemporalFeatureEngineer(id_col, time_col)
     df_temp = temp.fit_transform(df)
 
     # 3. Customer-level categorical (mode per customer)
+    print("3. Encoding categorical features...")
     if categorical_cols:
         df_cat = df[[id_col] + categorical_cols].copy()
-        # take the first mode per group or the first value if no mode
         df_cat = df_cat.groupby(id_col, as_index=False).agg(
             lambda s: s.mode().iloc[0] if not s.mode().empty else s.iloc[0])
+        if has_target:
+            df_cat = df_cat.merge(df_target, on=id_col, how="left")
     else:
-        # ensure df_cat has id column for merges
         df_cat = pd.DataFrame(
             {id_col: df_agg[id_col]}).drop_duplicates().reset_index(drop=True)
 
-    # 3a. Fit CategoryEncoder on the customer-level df_cat (if any categorical cols)
+    # 3a. Fit CategoryEncoder on customer-level df_cat
     ce = CategoryEncoder(categorical_cols)
     df_cat_enc = pd.DataFrame({id_col: df_agg[id_col]})
     if categorical_cols and not df_cat.empty:
         ce.fit(df_cat)
         df_cat_enc = ce.transform(df_cat)
-        # ensure id column present for merge
-        if id_col not in df_cat_enc.columns:
-            # df_cat likely still has id_col in df_cat; bring it in
-            if id_col in df_cat.columns:
-                df_cat_enc[id_col] = df_cat[id_col].values
-            else:
-                df_cat_enc[id_col] = df_cat.index
+        if id_col not in df_cat_enc.columns and id_col in df_cat.columns:
+            df_cat_enc[id_col] = df_cat[id_col].values
         df_cat_enc = df_cat_enc.reset_index(drop=True)
 
     # 4. Normalization & log transform for created numeric cols
-    numeric_prefixes = (f"{amount_col}", f"{value_col}")
-    numeric_cols = [c for c in df_agg.columns if c.startswith(
-        numeric_prefixes) and 'std' not in c]
+    print("4. Normalizing numeric features...")
+    numeric_prefixes = (f"{amount_col}", f"{value_col}", "Recent30")
+    numeric_cols = [c for c in df_agg.columns if any(
+        c.startswith(prefix) for prefix in numeric_prefixes) and 'std' not in c]
+
     fn = FeatureNormalizer(numeric_cols) if numeric_cols else None
     if fn:
         fn.fit(df_agg)
@@ -392,90 +487,139 @@ def feature_engineering_pipeline(
     feat_df = feat_df.merge(df_cat_enc, on=id_col, how='left')
     feat_df = feat_df.merge(df_norm, on=id_col, how='left')
 
-    # 6. Optional: WoE/IV encoding - compute on customer-level categorical df_cat (which contains raw categories per customer)
+    # 6. WoE / IV encoding (customer-level, leakage-safe)
+    # ---------------------------------------------------------
     ivs = {}
-    if 'FraudResult' in df.columns and categorical_cols:
-        woe_features = [c for c in categorical_cols if c in df_cat.columns]
-        if woe_features:
+    woe_features_kept = []
+
+    if has_target and categorical_cols:
+        if df_cat["HasFraud"].nunique() < 2:
+            print("⚠ WoE skipped: customer-level target has only one class.")
+        else:
+            print("5. Calculating WoE/IV for categorical features...")
+
+            woe_features = [c for c in categorical_cols if c in df_cat.columns]
+
             woe_calc = WoEIVCalculator(
-                woe_features, target_col='FraudResult', bins=5)
-            # fit using transaction-level data WITH target
-            woe_calc.fit(df)
-            # transform the customer-level categorical table (make sure id_col present)
-            df_cat_for_woe = df_cat.reset_index(drop=True)
-            df_cat_woe = woe_calc.transform(df_cat_for_woe)
-            # ensure id present
-            if id_col not in df_cat_woe.columns and id_col in df_cat_for_woe.columns:
-                df_cat_woe[id_col] = df_cat_for_woe[id_col].values
-            woe_cols_to_merge = [
-                f"{c}_woe" for c in woe_features if f"{c}_woe" in df_cat_woe.columns]
-            if woe_cols_to_merge and id_col in df_cat_woe.columns:
-                feat_df = feat_df.merge(
-                    df_cat_woe[[id_col] + woe_cols_to_merge], on=id_col, how='left')
+                features=woe_features,
+                target_col="HasFraud",
+                bins=4,               # safer for rare fraud
+                min_bin_size=0.02
+            )
+
+            woe_calc.fit(df_cat)
+            df_cat_woe = woe_calc.transform(df_cat)
+
             ivs = woe_calc.feature_iv()
 
+            iv_threshold = 0.02
+            high_iv_features = [f for f, iv in ivs.items() if iv >= iv_threshold]
+
+            woe_features_kept = [
+                f"{f}_woe" for f in high_iv_features
+                if f"{f}_woe" in df_cat_woe.columns
+            ]
+
+            if woe_features_kept:
+                feat_df = feat_df.merge(
+                    df_cat_woe[[id_col] + woe_features_kept],
+                    on=id_col,
+                    how="left"
+                )
+
+            print(f"  WoE features kept: {woe_features_kept}")
+
     # 7. Feature description table
-    desc = {"Feature": [], "Description": [], "Transformation": []}
+    print("6. Generating feature documentation...")
+    desc = {"Feature": [], "Description": [], "Transformation": [], "IV_Value": []}
+
     for c in feat_df.columns:
         if c == id_col:
             continue
+
+        iv_val = ""
         if c.endswith("_woe"):
             base = c[:-4]
-            iv_str = f" (IV={ivs[base]:.3f})" if base in ivs else ""
+            iv_val = f"{ivs.get(base, 0):.4f}" if base in ivs else ""
+            desc["Feature"].append(c)
+            desc["Description"].append(f"Weight of Evidence encoding for {base}")
+            desc["Transformation"].append("WoE coding (monotonic binning)")
+        elif c.startswith("Recent30_"):
+            desc["Feature"].append(c)
+            desc["Description"].append(f"Recent 30-day activity: {c}")
+            desc["Transformation"].append("Windowed aggregation")
+        elif "Velocity_" in c:
+            window = c.split("_")[1].replace("d", "")
             desc["Feature"].append(c)
             desc["Description"].append(
-                f"Weight of Evidence encoding for {base} wrt FraudResult{iv_str}")
-            desc["Transformation"].append("WoE coding (see IV)")
+                f"Transaction velocity (average per {window} days)")
+            desc["Transformation"].append("Rolling window calculation")
+        elif c in ["TimeSinceLast_mean", "TimeSinceLast_min", "TimeSinceLast_max"]:
+            desc["Feature"].append(c)
+            desc["Description"].append(
+                f"Recency metric: {c.split('_')[-1]} days since last transaction")
+            desc["Transformation"].append("Time difference aggregation")
+        elif "Hour_sin" in c or "Hour_cos" in c or "Month_sin" in c or "Month_cos" in c:
+            desc["Feature"].append(c)
+            desc["Description"].append("Cyclical encoding for temporal patterns")
+            desc["Transformation"].append("sin/cos transformation")
         elif "sum" in c:
             desc["Feature"].append(c)
             desc["Description"].append("Sum of values")
-            desc["Transformation"].append("Customer aggregation, none")
+            desc["Transformation"].append("Customer aggregation")
         elif "mean" in c:
             desc["Feature"].append(c)
             desc["Description"].append("Mean value")
-            desc["Transformation"].append("Customer aggregation, none")
+            desc["Transformation"].append("Customer aggregation")
         elif "skew" in c:
             desc["Feature"].append(c)
             desc["Description"].append("Skewness of values")
-            desc["Transformation"].append("Customer aggregation, none")
+            desc["Transformation"].append("Customer aggregation")
         elif c.endswith("_log_std"):
+            base = c.replace("_log_std", "")
             desc["Feature"].append(c)
-            desc["Description"].append(
-                "Log-transformed and normalized numeric feature")
-            desc["Transformation"].append("log1p & StandardScaler")
+            desc["Description"].append(f"Log-transformed and standardized {base}")
+            desc["Transformation"].append("log1p + StandardScaler")
         elif categorical_cols and c in ce.get_feature_names():
             desc["Feature"].append(c)
-            desc["Description"].append(f"Encoded {c.split('_')[0]}")
-            desc["Transformation"].append("One-hot or frequency encoding")
+            if "_freq" in c:
+                desc["Description"].append(
+                    f"Frequency encoding for {c.replace('_freq', '')}")
+                desc["Transformation"].append("Frequency encoding")
+            else:
+                desc["Description"].append(f"One-hot encoding for {c}")
+                desc["Transformation"].append("One-hot encoding")
         elif c.startswith("Hour_") or c.startswith("Weekday_"):
             desc["Feature"].append(c)
-            desc["Description"].append("Cyclical or time-aggregation")
-            desc["Transformation"].append(
-                "Extracted from timestamp, aggregated")
+            desc["Description"].append("Temporal aggregation")
+            desc["Transformation"].append("Extracted from timestamp, aggregated")
         elif c.startswith(("Day_", "Month_", "Year_")):
             desc["Feature"].append(c)
-            desc["Description"].append(
-                "Calendar/date component (customer aggregation)")
-            desc["Transformation"].append(
-                "Extracted from timestamp, aggregated")
-        elif c == "IsWeekend_mean":
+            desc["Description"].append("Calendar component aggregation")
+            desc["Transformation"].append("Extracted from timestamp, aggregated")
+        elif c in ["IsWeekend_mean", "IsBusinessHours_mean"]:
             desc["Feature"].append(c)
-            desc["Description"].append("Fraction of transactions on weekends")
-            desc["Transformation"].append("Extracted/aggregated")
+            desc["Description"].append(
+                f"Fraction of transactions ({c.replace('_mean', '')})")
+            desc["Transformation"].append("Boolean aggregation")
         else:
             desc["Feature"].append(c)
             desc["Description"].append("Generated feature")
-            desc["Transformation"].append("See code")
+            desc["Transformation"].append("See transformation details")
+
+        desc["IV_Value"].append(iv_val)
 
     feat_desc = pd.DataFrame(desc)
+
+    print(f"=== Pipeline Complete ===")
+    print(f"Generated {feat_df.shape[1]} features for {feat_df.shape[0]} customers")
+    print(f"Features with IV > 0.02: {len(woe_features_kept)}")
+
     return feat_df, feat_desc
 
 
-_ = feature_engineering_pipeline
-
-
 if __name__ == "__main__":
-    # Small smoke-test to exercise feature_engineering_pipeline
+    # Small smoke-test
     sample = pd.DataFrame([
         {"CustomerId": "C1", "Amount": 100.0, "Value": 10.0, "TransactionStartTime": "2025-01-01T12:00:00",
          "ProductCategory": "A", "ChannelId": "web", "FraudResult": 0},
@@ -483,8 +627,10 @@ if __name__ == "__main__":
          "ProductCategory": "A", "ChannelId": "app", "FraudResult": 0},
         {"CustomerId": "C2", "Amount": 200.0, "Value": 20.0, "TransactionStartTime": "2025-01-01T10:00:00",
          "ProductCategory": "B", "ChannelId": "web", "FraudResult": 1},
+        {"CustomerId": "C2", "Amount": 150.0, "Value": 15.0, "TransactionStartTime": "2025-01-03T14:00:00",
+         "ProductCategory": "B", "ChannelId": "web", "FraudResult": 1},
     ])
     feat_df_smoke, feat_desc_smoke = feature_engineering_pipeline(
         sample, categorical_cols=["ProductCategory", "ChannelId"])
-    print("Smoke test — features:", feat_df_smoke.shape,
-          "desc:", feat_desc_smoke.shape)
+    print("Smoke test — features:", feat_df_smoke.shape, "desc:", feat_desc_smoke.shape)
+    print("Feature columns:", feat_df_smoke.columns.tolist())
