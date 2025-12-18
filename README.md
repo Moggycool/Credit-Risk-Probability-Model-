@@ -63,3 +63,14 @@ credit-risk-model/
 ```
 
 ---
+# Task 5 — Model Training & Experiment Tracking
+
+## Overview
+This project trains supervised models to predict a proxy risk label using
+engineered features and tracks experiments using MLflow.
+
+## How to Run
+
+### 1. Start MLflow UI
+```bash
+mlflow ui
