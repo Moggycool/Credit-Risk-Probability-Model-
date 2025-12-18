@@ -1,58 +1,54 @@
-"""Feature engineering module for customer transaction data."""
+"""
+Feature Engineering Module for Credit Risk Modeling.
 
-from typing import Optional, List
+Provides:
+- TransactionAggregator: Aggregates transaction data into customer-level features.
+- TemporalFeatureEngineer: Extracts temporal/cyclical features.
+- CategoryEncoder: Encodes categorical features appropriately.
+- FeatureNormalizer: Handles log-transformation and scaling.
+- WoEIVCalculator: Calculates Weight of Evidence (WoE) and Information Value (IV) for binary targets.
+- feature_engineering_pipeline: Executes all steps and returns engineered DataFrame and documentation.
+"""
+
+from typing import List, Optional, Tuple
 import pandas as pd
 import numpy as np
+import inspect
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, LabelEncoder, StandardScaler, MinMaxScaler
-from sklearn.impute import SimpleImputer
+
+__all__ = [
+    "TransactionAggregator",
+    "TemporalFeatureEngineer",
+    "CategoryEncoder",
+    "FeatureNormalizer",
+    "WoEIVCalculator",
+    "feature_engineering_pipeline"
+]
 
 
-class FeatureEngineer(BaseEstimator, TransformerMixin):
-    """
-    Custom feature engineering transformer for customer transaction data.
-    Performs customer-level aggregations, extraction of time features, 
-    encoding, imputation, scaling, and optionally Weight of Evidence (WoE).
-    """
+class TransactionAggregator(BaseEstimator, TransformerMixin):
+    """Aggregates raw transaction data to customer-level features."""
 
     def __init__(
-        # pylint: disable=too-many-arguments
         self,
         customer_id_col: str = "CustomerId",
-        time_col: str = "TransactionStartTime",
         amount_col: str = "Amount",
         value_col: str = "Value",
-        encode_type: str = "onehot",     # "onehot" or "label"
-        scaler_type: str = "standard",   # "standard" or "minmax"
-        impute_strategy: str = "mean",   # "mean", "median", or "zero"
-        categorical_cols: Optional[List[str]] = None,
-        woe_cols: Optional[List[str]] = None,
+        time_col: str = "TransactionStartTime"
     ):
         self.customer_id_col = customer_id_col
-        self.time_col = time_col
         self.amount_col = amount_col
         self.value_col = value_col
-        self.encode_type = encode_type
-        self.scaler_type = scaler_type
-        self.categorical_cols = categorical_cols
-        self.woe_cols = woe_cols
-        self.impute_strategy = impute_strategy
-        self.ohe = None
-        self.lbl_encoders = None
-        self.scaler = None
-        self.imputer = None
-        self.num_cols_after_fe = None
+        self.time_col = time_col
 
-    def _engineer_features(self, df):
-        # Aggregation
-        agg_df = df.groupby(self.customer_id_col).agg({
-            self.amount_col: ['sum', 'mean', 'count', 'std'],
-            self.value_col: ['sum', 'mean', 'std']
-        })
-        agg_df.columns = [f"{col[0]}_{col[1]}" for col in agg_df.columns]
-        agg_df = agg_df.reset_index()
-        # Time features
+    def fit(self, x, y=None):
+        _ = x
+        _ = y
+        return self
+
+    def transform(self, x):
+        df = x.copy()
         df[self.time_col] = pd.to_datetime(df[self.time_col])
 
         # Overall aggregates
@@ -284,15 +280,22 @@ class FeatureNormalizer(BaseEstimator, TransformerMixin):
             self.cols_to_use = [
                 col for col in self.numeric_cols if col not in drop]
         else:
-            self.scaler = MinMaxScaler().fit(
-                self._impute(fe_df[self.num_cols_after_fe])
-            )
+            self.cols_to_use = list(self.numeric_cols)
+        if self.cols_to_use:
+            self.scaler.fit(x_log[self.cols_to_use])
         return self
 
-    def _impute(self, x_data):
-        """Apply imputer or fillna(0) as per strategy."""
-        if self.imputer is not None:
-            return self.imputer.transform(x_data)
+    def transform(self, x: pd.DataFrame):
+        if not self.numeric_cols:
+            return pd.DataFrame(index=x.index)
+        x_num = x[self.numeric_cols].copy()
+        x_log = x_num.apply(np.log1p)
+        x_use = x_log[self.cols_to_use] if self.cols_to_use else pd.DataFrame(
+            index=x.index)
+        if not x_use.empty:
+            arr = self.scaler.transform(x_use)
+            result = pd.DataFrame(
+                arr, columns=[f"{c}_log_std" for c in self.cols_to_use], index=x.index)
         else:
             result = pd.DataFrame(index=x.index)
         return result
@@ -387,9 +390,7 @@ def feature_engineering_pipeline(
     id_col: str = "CustomerId",
     amount_col: str = "Amount",
     value_col: str = "Value",
-    encode_type: str = "onehot",
-    scaler_type: str = "standard",
-    impute_strategy: str = "mean",   # <-- Add this parameter
+    time_col: str = "TransactionStartTime",
     categorical_cols: Optional[List[str]] = None
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
