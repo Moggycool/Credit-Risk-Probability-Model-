@@ -1,17 +1,15 @@
 version: "3.8"
 
 services:
-  ptv-api:
+  credit-risk-api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ptv-api
+    container_name: credit-risk-api
     ports:
       - "8000:8000"
     environment:
-      MODEL_LOCAL_PATH: /app/models/logistic_best.pkl
-      MODEL_STAGE: production
-      MODEL_NAME: ""
+      MODEL_LOCAL_PATH: /app/models/logistic_champion_fixed.joblib
     volumes:
       - ./models:/app/models:ro
     restart: unless-stopped
