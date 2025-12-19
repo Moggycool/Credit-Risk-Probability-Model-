@@ -26,11 +26,17 @@ __pycache__/
 .pytest_cache/
 
 
-# Ignore local MLflow SQLite DB files (should not be checked into Git)
+# MLflow tracking files
+mlruns/
 mlflow.db
-**/mlflow.db
-# Ignore Jupyter notebook checkpoints and MLflow runs
-notebooks/mlruns/ mlruns/ mlflow.db 
+
+# MLflow created inside notebooks/
+notebooks/mlflow.db
+notebooks/mlruns/
+notebooks/artifacts/
+
+
+
 models/
 # Ignore OS generated files
 .DS_Store
