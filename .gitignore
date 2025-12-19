@@ -27,7 +27,7 @@ __pycache__/
 
 
 # Ignore local MLflow SQLite DB files (should not be checked into Git)
-mlflow.db
+
 **/mlflow.db
 # Ignore Jupyter notebook checkpoints and MLflow runs
 notebooks/mlruns/ mlruns/ mlflow.db 
