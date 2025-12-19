@@ -30,8 +30,12 @@ __pycache__/
 mlflow.db
 **/mlflow.db
 # Ignore Jupyter notebook checkpoints and MLflow runs
-notebooks/mlruns/ mlruns/ mlflow.db 
+notebooks/mlruns/
 models/
+mlartifacts/
+mlruns/
+models/
+artifacts/
 # Ignore OS generated files
 .DS_Store
 
