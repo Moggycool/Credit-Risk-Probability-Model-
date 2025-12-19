@@ -5,13 +5,14 @@ __pycache__
 *.pyd
 .env
 venv
-genv
+genv/
 .venv
-.git
+.git/
+.github/
 .gitignore
 
 # Jupyter / notebooks / MLflow runs (large)
-notebooks
+.ipynb_checkpoints
 notebooks/mlruns
 mlruns
 

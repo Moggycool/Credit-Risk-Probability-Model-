@@ -1,25 +1,89 @@
-"""Tests for the Predictor class in api/predictor.py."""
-from api.predictor import Predictor
-import os
+import numpy as np
+import pandas as pd
+import pytest
 
-# Ensure env var is set BEFORE importing Predictor so module-level config sees it.
-os.environ["MODEL_LOCAL_PATH"] = "models/random_forest_best.pkl"
+from src.api.predictor import Predictor, ModelNotLoadedError
 
 
-def test_load_local_model_and_predict():
-    """Test loading a local model and making a prediction."""
-    p = Predictor()
-    p.load()
-    assert p.model is not None
+# -----------------------
+# Mock model
+# -----------------------
+class MockModel:
+    feature_names_in_ = ["f1", "f2", "f3"]
 
-    # Build a features dict. If Predictor inferred features, use those with dummy values.
-    if p.features:
-        features = {name: 0.0 for name in p.features}
-    else:
-        # Fallback: use an example feature name you expect in your model
-        features = {"Amount_sum": 100.0}
+    def predict_proba(self, X):
+        # return constant probability for testing
+        return np.array([[0.3, 0.7]])
 
-    res = p.predict(features)
-    assert "probability" in res
-    # probability can be None if saved model only outputs labels, but predicted_class should exist
-    assert "predicted_class" in res
+    def predict(self, X):
+        return np.array([1])
+
+
+# -----------------------
+# Tests
+# -----------------------
+def test_predictor_predict_success(monkeypatch):
+    """
+    Predictor returns probability and class when model is loaded.
+    """
+    predictor = Predictor()
+    predictor.model = MockModel()
+    predictor.features = ["f1", "f2", "f3"]
+    predictor.source = "local:test-model"
+
+    result = predictor.predict({"f1": 1.0, "f2": 2.0, "f3": 3.0})
+
+    assert result["probability"] == pytest.approx(0.7)
+    assert result["predicted_class"] == 1
+
+
+def test_predictor_missing_features_filled_with_nan():
+    """
+    Missing features should be filled with NaN.
+    """
+    predictor = Predictor()
+    predictor.model = MockModel()
+    predictor.features = ["f1", "f2", "f3"]
+
+    X = predictor._build_dataframe({"f1": 1.0})
+
+    assert X.shape == (1, 3)
+    assert np.isnan(X.loc[0, "f2"])
+    assert np.isnan(X.loc[0, "f3"])
+
+
+def test_predictor_extra_features_ignored():
+    """
+    Extra features should not break prediction.
+    """
+    predictor = Predictor()
+    predictor.model = MockModel()
+    predictor.features = ["f1", "f2"]
+
+    X = predictor._build_dataframe({"f1": 1.0, "f2": 2.0, "extra": 99})
+
+    assert list(X.columns) == ["f1", "f2"]
+
+
+def test_predictor_raises_if_model_not_loaded():
+    """
+    Predictor should raise if predict is called before load().
+    """
+    predictor = Predictor()
+
+    with pytest.raises(ModelNotLoadedError):
+        predictor.predict({"f1": 1.0})
+
+
+def test_predictor_without_known_features():
+    """
+    If feature list is unknown, trust caller input.
+    """
+    predictor = Predictor()
+    predictor.model = MockModel()
+    predictor.features = None
+
+    X = predictor._build_dataframe({"a": 1, "b": 2})
+
+    assert isinstance(X, pd.DataFrame)
+    assert list(X.columns) == ["a", "b"]
