@@ -33,12 +33,12 @@ mlflow.db
 # MLflow created inside notebooks/
 notebooks/mlflow.db
 notebooks/mlruns/
+notebooks/artifacts/
 
-# Experiment artifacts
-artifacts/
+
 
 models/
 # Ignore OS generated files
 .DS_Store
 
-.venv/ genv/ env/ .vscode/ pycache/ *.pyc
+.venv/ genv/ env/ .vscode/ __pycache__/ *.pyc
