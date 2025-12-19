@@ -34,11 +34,10 @@ mlflow.db
 notebooks/mlflow.db
 notebooks/mlruns/
 notebooks/artifacts/
-
-
+mlartifacts/
 
 models/
 # Ignore OS generated files
 .DS_Store
 
-.venv/ genv/ env/ .vscode/ __pycache__/ *.pyc
+.venv/ genv/ env/ .vscode/ __pycache__/ *.pycmlartifacts/
