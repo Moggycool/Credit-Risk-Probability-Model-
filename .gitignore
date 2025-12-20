@@ -1,5 +1,6 @@
 # Data (should not be versioned)
 data/
+<<<<<<< HEAD
 
 # Virtual environments
 genv/
@@ -7,6 +8,11 @@ venv/
 .venv/
 
 # Environment variables
+=======
+.vscode/
+*__pycache__
+.genv/
+>>>>>>> task-2
 .env
 
 # VS Code
@@ -17,6 +23,7 @@ venv/
 
 # Python cache / compiled files
 __pycache__/
+<<<<<<< HEAD
 *.py[cod]
 *.pyd
 *.pyo
@@ -47,3 +54,15 @@ artifacts/
 .DS_Store
 
 .venv/ genv/ env/ .vscode/ pycache/ *.pyclogs/
+=======
+*.pytest_cache/
+.__pycache__/
+*.ipynb_checkpoints/
+mlartifacts/
+mlruns/
+mlflow/
+mlflow.db
+genv/
+artifacts/
+
+>>>>>>> task-2
