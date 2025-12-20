@@ -150,7 +150,8 @@ def train_and_evaluate(
         onehot = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
     except TypeError:
         try:
-            onehot = OneHotEncoder(handle_unknown="ignore", sparse=False)
+            onehot = OneHotEncoder(
+                handle_unknown="ignore", sparse_output=False)
         except TypeError:
             onehot = OneHotEncoder(handle_unknown="ignore")
 
