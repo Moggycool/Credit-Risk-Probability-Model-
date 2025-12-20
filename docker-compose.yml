@@ -10,8 +10,10 @@ services:
       - "8000:8000"
     environment:
       MODEL_LOCAL_PATH: /app/models/logistic_champion_fixed.joblib
+      MODEL_FEATURES_PATH: /app/models/feature_names.json  # Now contains just Year_mean and Month_mean
     volumes:
       - ./models:/app/models:ro
+      - ./data/processed:/app/data/processed:ro  # Add this if you need data files
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
