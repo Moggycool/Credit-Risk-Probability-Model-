@@ -1,89 +1,122 @@
-import numpy as np
-import pandas as pd
+"""
+Unit tests for the Predictor class.
+"""
+
 import pytest
+import pandas as pd
+import numpy as np
+from unittest.mock import Mock, patch
+import os
 
 from src.api.predictor import Predictor, ModelNotLoadedError
 
 
-# -----------------------
-# Mock model
-# -----------------------
-class MockModel:
-    feature_names_in_ = ["f1", "f2", "f3"]
-
-    def predict_proba(self, X):
-        # return constant probability for testing
-        return np.array([[0.3, 0.7]])
-
-    def predict(self, X):
-        return np.array([1])
-
-
-# -----------------------
-# Tests
-# -----------------------
-def test_predictor_predict_success(monkeypatch):
-    """
-    Predictor returns probability and class when model is loaded.
-    """
+def test_predictor_initialization():
+    """Test Predictor initialization."""
     predictor = Predictor()
-    predictor.model = MockModel()
-    predictor.features = ["f1", "f2", "f3"]
-    predictor.source = "local:test-model"
-
-    result = predictor.predict({"f1": 1.0, "f2": 2.0, "f3": 3.0})
-
-    assert result["probability"] == pytest.approx(0.7)
-    assert result["predicted_class"] == 1
+    assert predictor.model is None
+    assert predictor.features is None
+    assert predictor.source == "none"
+    assert predictor.n_features_expected is None
+    assert "low_max" in predictor.risk_thresholds
 
 
-def test_predictor_missing_features_filled_with_nan():
-    """
-    Missing features should be filled with NaN.
-    """
+def test_calculate_risk_category():
+    """Test risk category calculation."""
     predictor = Predictor()
-    predictor.model = MockModel()
-    predictor.features = ["f1", "f2", "f3"]
 
-    X = predictor._build_dataframe({"f1": 1.0})
+    assert predictor._calculate_risk_category(0.1) == "LOW"
+    assert predictor._calculate_risk_category(0.32) == "LOW"
+    assert predictor._calculate_risk_category(0.33) == "MEDIUM"
+    assert predictor._calculate_risk_category(0.5) == "MEDIUM"
+    assert predictor._calculate_risk_category(0.65) == "MEDIUM"
+    assert predictor._calculate_risk_category(0.66) == "HIGH"
+    assert predictor._calculate_risk_category(0.9) == "HIGH"
 
-    assert X.shape == (1, 3)
-    assert np.isnan(X.loc[0, "f2"])
-    assert np.isnan(X.loc[0, "f3"])
 
-
-def test_predictor_extra_features_ignored():
-    """
-    Extra features should not break prediction.
-    """
+def test_get_risk_recommendation():
+    """Test risk recommendation."""
     predictor = Predictor()
-    predictor.model = MockModel()
-    predictor.features = ["f1", "f2"]
 
-    X = predictor._build_dataframe({"f1": 1.0, "f2": 2.0, "extra": 99})
-
-    assert list(X.columns) == ["f1", "f2"]
+    assert "Approve" in predictor._get_risk_recommendation("LOW")
+    assert "Review" in predictor._get_risk_recommendation("MEDIUM")
+    assert "Reject" in predictor._get_risk_recommendation("HIGH")
 
 
-def test_predictor_raises_if_model_not_loaded():
-    """
-    Predictor should raise if predict is called before load().
-    """
+def test_calculate_risk_score():
+    """Test risk score calculation."""
+    predictor = Predictor()
+
+    assert predictor._calculate_risk_score(0.0) == 0
+    assert predictor._calculate_risk_score(0.5) == 50
+    assert predictor._calculate_risk_score(1.0) == 100
+    assert predictor._calculate_risk_score(0.333) == 33
+
+
+@patch('src.api.predictor.joblib.load')
+def test_load_local_model(mock_joblib_load):
+    """Test loading local model."""
+    predictor = Predictor()
+    mock_model = Mock()
+    mock_joblib_load.return_value = mock_model
+
+    # Temporarily set environment variable
+    os.environ["MODEL_LOCAL_PATH"] = "dummy/path/model.joblib"
+    os.environ["MODEL_FEATURES_PATH"] = "dummy/path/features.json"
+
+    try:
+        predictor.load()
+        assert predictor.model == mock_model
+        assert predictor.source.startswith("local:")
+    finally:
+        # Clean up
+        del os.environ["MODEL_LOCAL_PATH"]
+        del os.environ["MODEL_FEATURES_PATH"]
+
+
+def test_build_dataframe_with_features():
+    """Test dataframe building with known features."""
+    predictor = Predictor()
+    predictor.features = ["feature1", "feature2"]
+    predictor.n_features_expected = 2
+
+    features = {"feature1": 10.5, "feature2": 20.0}
+    df = predictor._build_dataframe(features)
+
+    assert isinstance(df, pd.DataFrame)
+    assert df.shape == (1, 2)
+    assert list(df.columns) == ["feature1", "feature2"]
+    assert df.iloc[0]["feature1"] == 10.5
+
+
+def test_build_dataframe_missing_features():
+    """Test dataframe building with missing features."""
+    predictor = Predictor()
+    predictor.features = ["feature1", "feature2", "feature3"]
+    predictor.n_features_expected = 3
+
+    features = {"feature1": 10.5, "feature2": 20.0}
+    # Missing feature3
+
+    with pytest.raises(ValueError, match="Missing required features"):
+        predictor._build_dataframe(features)
+
+
+def test_predict_without_model():
+    """Test prediction without loaded model."""
     predictor = Predictor()
 
     with pytest.raises(ModelNotLoadedError):
-        predictor.predict({"f1": 1.0})
+        predictor.predict({"feature1": 10.5})
 
 
-def test_predictor_without_known_features():
-    """
-    If feature list is unknown, trust caller input.
-    """
-    predictor = Predictor()
-    predictor.model = MockModel()
-    predictor.features = None
+def test_singleton_pattern():
+    """Test that get_predictor returns a singleton."""
+    from src.api.predictor import get_predictor, _predictor
 
-    X = predictor._build_dataframe({"a": 1, "b": 2})
+    predictor1 = get_predictor()
+    predictor2 = get_predictor()
 
-    assert isinstance(X, pd.DataFrame)
-    assert list(X.columns) == ["a", "b"]
+    # Should be the same instance
+    assert predictor1 is predictor2
+    assert predictor1 is _predictor

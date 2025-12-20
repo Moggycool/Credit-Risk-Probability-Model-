@@ -131,3 +131,20 @@ curl -X 'POST' \
 }'
 Request URL
 http://127.0.0.1:8000/predict
+
+
+Update README.md with:
+
+    Deployment instructions (Docker, Docker Compose)
+
+    API usage examples (curl, Python, PowerShell)
+
+    CI/CD workflow description
+
+    Testing instructions
+
+    Troubleshooting guide
+
+    Sample input/output schemas
+
+    Load testing results (if available)
