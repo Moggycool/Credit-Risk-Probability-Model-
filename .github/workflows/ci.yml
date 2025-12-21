@@ -31,6 +31,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
+      - name: Install PyYAML hotfix
+        run: pip install --upgrade "PyYAML>=6.0"
+
       - name: Install dependencies
         run: |
           set -e
