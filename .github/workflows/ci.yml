@@ -27,12 +27,26 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-3.11-
 
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Run lint
+        run: flake8 .
+
   test:
     name: Tests (pytest)
     runs-on: ubuntu-22.04
     strategy:
       matrix:
         python-version: ["3.10", "3.11"]
+
+    services:
+      api:
+        image: api:latest
+        ports:
+          - 8000:8000
+        # Note: 'build' is not supported under 'services' in GitHub Actions.
+        # Pre-build and push 'api:latest' to a registry, or build the image in a separate job/step before using it as a service.
 
     steps:
       - name: Checkout repository
@@ -55,11 +69,8 @@ jobs:
         run: |
           set -e
           python -m pip install --upgrade pip
-          if [ -f "requirements.txt" ]; then
-            pip install --no-cache-dir -r requirements.txt
-          else
-            pip install --no-cache-dir pytest scikit-learn joblib uvicorn
-          fi
+          pip install --no-cache-dir -r requirements.txt
+          pip install pytest requests
 
       - name: Create dummy model for tests
         run: |
@@ -76,10 +87,18 @@ jobs:
           print("Wrote models/dummy_model.pkl")
           PY
 
-      - name: Start API server
+      - name: Wait for API to become healthy
         run: |
-          uvicorn src.main:app --host 0.0.0.0 --port 8000 &
-          sleep 5
+          for i in {1..10}; do
+            sleep 3
+            if curl -sf http://localhost:8000/health; then
+              echo "API is healthy!"
+              exit 0
+            fi
+            echo "Waiting for API..."
+          done
+          echo "API did not become healthy in time" >&2
+          exit 1
 
       - name: Run tests with coverage
         run: |
