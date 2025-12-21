@@ -1,0 +1,10 @@
+{
+  "customer_id": "C123",
+  "features": {
+    "Amount_sum": 120.5,
+    "Amount_mean": 40.2,
+    "Amount_max": 80.0,
+    "Amount_std": 10.5
+    /* add the rest of model feature names here if needed */
+  }
+}

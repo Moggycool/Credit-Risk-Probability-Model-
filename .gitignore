@@ -1,1 +1,68 @@
+# Data (should not be versioned)
 data/
+<<<<<<< HEAD
+
+# Virtual environments
+genv/
+venv/
+.venv/
+
+# Environment variables
+=======
+.vscode/
+*__pycache__
+.genv/
+>>>>>>> task-2
+.env
+
+# VS Code
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python cache / compiled files
+__pycache__/
+<<<<<<< HEAD
+*.py[cod]
+*.pyd
+*.pyo
+*.cpython-*.pyc
+
+# Pytest
+.pytest_cache/
+
+
+# MLflow tracking files
+mlruns/
+mlflow.db
+
+# MLflow created inside notebooks/
+notebooks/mlflow.db
+notebooks/mlruns/
+notebooks/artifacts/
+# Artifacts
+artifacts/
+# Model files
+mlartifacts/
+
+
+
+models/
+artifacts/
+# Ignore OS generated files
+.DS_Store
+
+.venv/ genv/ env/ .vscode/ pycache/ *.pyclogs/
+=======
+*.pytest_cache/
+.__pycache__/
+*.ipynb_checkpoints/
+mlartifacts/
+mlruns/
+mlflow/
+mlflow.db
+genv/
+artifacts/
+
+>>>>>>> task-2

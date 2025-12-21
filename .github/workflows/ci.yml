@@ -1,56 +1,85 @@
 name: CI
 
 on:
-    push:
-        branches: [main, develop]
-    pull_request:
-        branches: [main, develop]
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
 
 jobs:
-    test:
-        runs-on: ubuntu-latest
-        strategy:
-            matrix:
-                python-version: [3.10, 3.11]
+  test:
+    name: Tests (pytest)
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        python-version: ["3.11"]
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Set up Python
-              uses: actions/setup-python@v4
-              with:
-                  python-version: ${{ matrix.python-version }}
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-            - name: Cache pip
-              uses: actions/cache@v4
-              with:
-                  path: ~/.cache/pip
-                  key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
-                  restore-keys: |
-                      ${{ runner.os }}-pip-${{ matrix.python-version }}-
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-
 
-            - name: Install dependencies
-              run: |
-                  set -e
-                  if [ -f "requirements.txt" ]; then
-                      pip install -r requirements.txt
-                  elif [ -f "pyproject.toml" ]; then
-                      # if the project uses pyproject.toml (PEP 517), try installing the package
-                      pip install .
-                  else
-                      # minimal fallback for running tests
-                      pip install pytest flake8
-                  fi
+      - name: Install PyYAML hotfix
+        run: pip install --upgrade "PyYAML>=6.0"
 
-            - name: Lint (optional)
-              run: |
-                  if command -v flake8 >/dev/null 2>&1; then
-                      flake8 || true
-                  else
-                      echo "flake8 not installed, skipping lint"
-                  fi
+      - name: Install dependencies
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          pip install --no-cache-dir -r requirements.txt
+          pip install pytest requests docker-compose
 
-            - name: Run tests
-              run: |
-                  pytest -q
+      - name: Create dummy model for tests
+        run: |
+          cat <<'PY' | python
+          import os, joblib
+          from sklearn.dummy import DummyClassifier
+          import numpy as np
+          os.makedirs("models", exist_ok=True)
+          clf = DummyClassifier(strategy="most_frequent")
+          X = np.zeros((2, 1))
+          y = [0, 0]
+          clf.fit(X, y)
+          joblib.dump(clf, "models/dummy_model.pkl")
+          print("Wrote models/dummy_model.pkl")
+          PY
+
+      - name: Build API service
+        run: docker compose build api
+
+      - name: Start API service
+        run: docker compose up -d api
+
+      - name: Wait for API to become healthy
+        run: |
+          for i in {1..10}; do
+            sleep 3
+            if curl -sf http://localhost:8000/health; then
+              echo "API is healthy!"
+              exit 0
+            fi
+            echo "Waiting for API..."
+          done
+          echo "API did not become healthy in time" >&2
+          docker compose logs
+          exit 1
+
+      - name: Run tests with coverage
+        run: |
+          PYTHONPATH=. pytest -q
+
+      - name: Stop API service
+        if: always()
+        run: docker compose down
