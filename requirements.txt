@@ -147,7 +147,8 @@ pytz==2025.2
 PyWavelets==1.8.0
 #pywin32==311
 pywin32==311; platform_system == "Windows"
-pywinpty==3.0.2
+#pywinpty==3.0.2
+pywinpty==3.0.2; platform_system == "Windows"
 PyYAML==6.0.3
 pyzmq==27.1.0
 referencing==0.37.0
