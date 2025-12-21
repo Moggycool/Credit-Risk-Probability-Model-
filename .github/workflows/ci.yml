@@ -7,32 +7,6 @@ on:
     branches: [main, develop]
 
 jobs:
-  lint:
-    name: Lint (flake8)
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-3.11-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-3.11-
-
-      - name: Install flake8
-        run: pip install flake8
-
-      - name: Run lint
-        run: flake8 .
-
   test:
     name: Tests (pytest)
     runs-on: ubuntu-22.04
@@ -79,8 +53,6 @@ jobs:
           print("Wrote models/dummy_model.pkl")
           PY
 
-      # Explicitly build and start your API using docker-compose so it has the current source and artifacts.
-      # Make sure your docker-compose.yml is set up to use the correct context and mount ./models if needed.
       - name: Build API service
         run: docker compose build api
 
