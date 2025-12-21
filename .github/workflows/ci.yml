@@ -40,14 +40,6 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11"]
 
-    services:
-      api:
-        image: api:latest
-        ports:
-          - 8000:8000
-        # Note: 'build' is not supported under 'services' in GitHub Actions.
-        # Pre-build and push 'api:latest' to a registry, or build the image in a separate job/step before using it as a service.
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -70,7 +62,7 @@ jobs:
           set -e
           python -m pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
-          pip install pytest requests
+          pip install pytest requests docker-compose
 
       - name: Create dummy model for tests
         run: |
@@ -87,6 +79,14 @@ jobs:
           print("Wrote models/dummy_model.pkl")
           PY
 
+      # Explicitly build and start your API using docker-compose so it has the current source and artifacts.
+      # Make sure your docker-compose.yml is set up to use the correct context and mount ./models if needed.
+      - name: Build API service
+        run: docker compose build api
+
+      - name: Start API service
+        run: docker compose up -d api
+
       - name: Wait for API to become healthy
         run: |
           for i in {1..10}; do
@@ -98,8 +98,13 @@ jobs:
             echo "Waiting for API..."
           done
           echo "API did not become healthy in time" >&2
+          docker compose logs
           exit 1
 
       - name: Run tests with coverage
         run: |
           PYTHONPATH=. pytest -q
+
+      - name: Stop API service
+        if: always()
+        run: docker compose down
